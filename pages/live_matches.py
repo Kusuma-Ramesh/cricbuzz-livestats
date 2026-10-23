@@ -2,6 +2,7 @@
 
 import streamlit as st
 
+from api.parsers import empty_scorecard_message, innings_totals
 from services import live_service
 from utils import charts, theme
 from utils.db_connection import run_query
@@ -67,7 +68,6 @@ def match_centre() -> None:
                         use_container_width=True,
                 ):
                     st.session_state["requested_match"] = label
-                    st.session_state["live_match_selector"] = label
                     st.rerun()
 
     options = list(labels)
@@ -131,7 +131,12 @@ def match_centre() -> None:
 
     with left:
         if not innings:
-            st.info("Scorecard will appear once the match starts.")
+            level, text = empty_scorecard_message(m)
+            (st.warning if level == "warning" else st.info)(text)
+            totals = innings_totals(m)
+            if totals:
+                st.caption(f"Innings totals from the {'Cricbuzz API' if source == 'api' else 'demo'} feed")
+                st.dataframe(pd.DataFrame(totals), hide_index=True, width="stretch")
         else:
             tabs = st.tabs([f"{i['team']} {i['runs']}/{i['wkts']}" for i in innings])
             for tab, inn in zip(tabs, innings):

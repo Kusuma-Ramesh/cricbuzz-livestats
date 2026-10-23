@@ -7,6 +7,7 @@ local database (so the UI is fully usable without an API key or when the quota i
 from __future__ import annotations
 
 import hashlib
+import logging
 import random
 import zlib
 from datetime import datetime, timedelta, timezone
@@ -18,6 +19,8 @@ from api.cricbuzz_client import CricbuzzAPIError, CricbuzzClient
 from api.parsers import parse_matches, parse_scorecard
 from utils.config import settings
 from utils.db_connection import run_query
+
+log = logging.getLogger(__name__)
 
 
 @st.cache_resource
@@ -56,14 +59,29 @@ def get_matches(kind: str = "live", force_demo: bool = False) -> tuple[list[dict
 
 @st.cache_data(ttl=max(settings.api_cache_seconds, 5), show_spinner=False)
 def _fetch_scorecard(match_id: int):
-    return parse_scorecard(_client().scorecard(match_id))
+    payload = _client().scorecard(match_id)
+    innings = parse_scorecard(payload)
+    if not innings:  # call succeeded but nothing parseable: leave evidence in the log (no secrets)
+        keys = sorted(payload) if isinstance(payload, dict) else type(payload).__name__
+        log.warning(
+            "Cricbuzz scorecard for match %s had no readable innings (top-level keys: %s)",
+            match_id,
+            keys,
+        )
+    return innings
 
 
 def get_scorecard(match: dict, source: str) -> tuple[list[dict], str]:
+    """(innings, note). An empty innings list means 'no detailed scorecard' - the caller decides
+    what that means from the match phase; real API data is never replaced by simulated data here."""
     if source == "api":
         try:
-            return _fetch_scorecard(int(match["match_id"])), ""
-        except (CricbuzzAPIError, ValueError) as exc:
+            match_id = int(match["match_id"])
+        except (KeyError, TypeError, ValueError):
+            return [], "Scorecard unavailable: the API feed did not provide a valid match id."
+        try:
+            return _fetch_scorecard(match_id), ""
+        except CricbuzzAPIError as exc:
             return demo_scorecard(
                 match
             ), f"Scorecard unavailable from API ({exc}); showing a simulated card."
@@ -344,4 +362,4 @@ def api_top_stats(stats_type: str, match_type: int | None) -> pd.DataFrame:
     """Cricbuzz top-stats table (columns exactly as returned by the API)."""
     from api.parsers import parse_table
 
-    return parse_table(_client().top_stats(stats_type, match_type))
+    return parse_table(_client().top_stats(stats_type, match_type), leading_id="player_id")

@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from api.cricbuzz_client import CricbuzzAPIError
+from api.parsers import build_api_board
 from services import live_service
 from utils import charts, theme
 from utils.db_connection import run_query
@@ -68,15 +69,16 @@ if use_api and api_type and not st.session_state.get("force_demo"):
             f"API unavailable ({theme.esc(str(exc))}). Showing SQL-computed leaderboard.", "warn"
         )
 
-if source == "Cricbuzz API" and not df.empty:
-    text_cols = [c for c in df.columns if df[c].dtype == object]
-    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    if text_cols and num_cols:
-        name_col, val_col = text_cols[0] if len(text_cols) == 1 else text_cols[1], num_cols[-1]
-        board = df.rename(columns={name_col: "name", val_col: "value"}).assign(sub="")
-    else:
-        board = pd.DataFrame()
-else:
+board = pd.DataFrame()
+if source == "Cricbuzz API":
+    board = build_api_board(df, asc)
+    if board.empty:  # never label SQL numbers as API data
+        theme.callout(
+            "The API returned no usable table for this selection. Showing the SQL-computed leaderboard.",
+            "warn",
+        )
+        source = "SQL database"
+if source != "Cricbuzz API":
     raw = db_stats(fmt)
     if qual:
         raw = raw[raw[qual[0]] >= qual[1]]

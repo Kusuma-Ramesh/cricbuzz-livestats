@@ -4,7 +4,7 @@ import random
 
 import streamlit as st
 
-from services import analytics
+from services import analytics, arcade
 from utils import theme
 from utils.db_connection import run_query
 
@@ -67,12 +67,18 @@ with g1:
         '<div class="cb-card"><h3 style="margin:0">Higher or Lower</h3>'
         '<p style="color:var(--ink-2);margin:4px 0 0">Who has more career runs?</p></div>'
     )
+    # Feedback for the PREVIOUS round: shown above the new question and labelled "Last round".
+    if S.hl_msg:
+        st.info(S.hl_msg)
     if S.hl is None:
         a, b = random.sample(range(len(ratings)), 2)
         S.hl = (ratings.iloc[a].to_dict(), ratings.iloc[b].to_dict())
     pa, pb = S.hl
     st.markdown(f"**{pa['full_name']}** ({pa['country']}) - **{int(pa['runs']):,}** runs")
-    st.markdown(f"vs **{pb['full_name']}** ({pb['country']}) - ?")
+    st.markdown(
+        f"vs **{pb['full_name']}** ({pb['country']}) - ?  \n"
+        f"*Does {pb['full_name']} have higher or lower career runs than {pa['full_name']}?*"
+    )
     c1, c2, c3 = st.columns(3)
     guess = (
         "higher"
@@ -82,17 +88,11 @@ with g1:
         else None
     )
     if guess:
-        right = (pb["runs"] >= pa["runs"]) == (guess == "higher")
+        right = arcade.grade_higher_lower(pa["runs"], pb["runs"], guess)
         gain = award(right, 10)
-        S.hl_msg = (
-            f"Correct! {pb['full_name']} has {int(pb['runs']):,} runs. +{gain} XP"
-            if right
-            else f"Not quite - {pb['full_name']} has {int(pb['runs']):,} runs."
-        )
+        S.hl_msg = arcade.higher_lower_feedback(pa, pb, guess, right, gain)
         S.hl = None
         st.rerun()
-    if S.hl_msg:
-        st.info(S.hl_msg)
 
 # ---------------------------------------------------------------- Guess the total
 with g2:
@@ -107,16 +107,19 @@ with g2:
             "GROUP BY m.match_id, m.description, m.match_format ORDER BY RANDOM() LIMIT 1"
         )
         S.gt = row.iloc[0].to_dict() if not row.empty else None
+    # Feedback for the PREVIOUS round: shown above the new question and labelled "Last round".
+    if S.gt_msg:
+        st.info(S.gt_msg)
     if S.gt:
         st.markdown(f"**{S.gt['description']}** - first-innings total?")
         top = 280 if S.gt["match_format"] == "T20I" else 400
-        guess = st.slider("Your guess", 40, top, top // 2)
+        # keyed per match so every round starts with a fresh slider (no guess carried over from the last round)
+        total_guess = st.slider(
+            "Your guess", 40, top, top // 2, key=f"gt_guess_{int(S.gt['match_id'])}"
+        )
         if st.button("Lock it in", type="primary"):
-            err = abs(guess - int(S.gt["total"]))
-            pts = max(0, 50 - err)
-            S.xp += pts
-            S.gt_msg = f"Actual total: {int(S.gt['total'])} (you were {err} off) - +{pts} XP"
+            result = arcade.grade_total_guess(total_guess, S.gt["total"])
+            S.xp += result["pts"]
+            S.gt_msg = arcade.total_feedback(S.gt["description"], result)
             S.gt = None
             st.rerun()
-    if S.gt_msg:
-        st.info(S.gt_msg)
