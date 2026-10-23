@@ -80,9 +80,3 @@ python -m pytest -q          # 54 tests: overs, all 25 queries, CRUD validation,
 ## Security notes
 Keys live in `.env` / secrets (git-ignored). All SQL is parameterised. The SQL console allows a single
 SELECT on a read-only connection. Deleting players/matches needs a typed confirmation.
-
-## Submission checklist (from the brief)
-- [x] Streamlit app (`main.py`) with Live, Top Players, SQL, CRUD and Home pages
-- [x] Schema + sample data, 25 SQL questions, requirements, setup docs
-- [ ] Screen recording of the working dashboard (you record this)
-- [ ] Git repository with commits (`git init && git add . && git commit`)
